@@ -12,3 +12,6 @@
 4. Fourth item
 5. crypto information
 6. commodities
+
+https://github.com/JNYH/Analysing_the_Stock_Market_with_Python/blob/main/Analysing%20the%20Stock%20Market%20p1.ipynb
+https://www.analyticsvidhya.com/blog/2021/07/stock-prices-analysis-with-python/
