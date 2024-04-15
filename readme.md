@@ -1,8 +1,9 @@
 # Readme
 ## API
+
 [API](https://www.alphavantage.co/documentation/)
 **API_KEY** = *W59OQACAUZ0HS2N3*
----------------
+
 ## functions
 
 1. Search symbol

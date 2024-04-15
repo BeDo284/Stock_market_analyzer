@@ -1,9 +1,10 @@
 import json
 import os
 from datetime import datetime
-
 import pandas as pd
 import requests
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 api_key1 = 'W59OQACAUZ0HS2N3'
 api_key2 = 'TWGWL6U2XC4X2L6C'
@@ -28,13 +29,10 @@ def create_file(period, tick):
     file_to_save = os.path.join(base_directory, relative_path)
 
     if os.path.exists(file_to_save):
-        print("File exists!")
         valid_input = False
     else:
-        print("File does not exist.")
         if period == 'daily':
             url_daily = f'https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={ticker}&apikey={api_key2}'
-            print(url_daily)
             response = requests.get(url_daily)
         elif period == 'intraday':
             url_intra_day = f'https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY&symbol={ticker}&interval={interval}min&apikey={api_key2}'
@@ -69,7 +67,7 @@ def check_api_error_message():
                 print(f'An error occurred: {e}')
         if 'Error Message' in data:
             print("Wrong stock market ticker. Choose a new one!")
-            # os.remove(file_to_save)  # Delete the file
+            os.remove(file_to_save)  # Delete the file
             return False
         else:
             return True
@@ -87,7 +85,7 @@ def create_dataframes(period, file):
     try:
         with open(file) as f:
             data = json.load(f)
-        meta_data = pd.DataFrame(data['Meta Data'], index=['Meta Data']).T
+        meta_data = pd.DataFrame(data['Meta Data'], index=['Meta Data'])
         if period == 'daily':
             stock_data = pd.DataFrame(data['Time Series (Daily)']).T
         elif period == 'intraday':
@@ -100,6 +98,15 @@ def create_dataframes(period, file):
             valid_input = False
     except Exception as e:
         print(f'An error occurred: {e}')
+
+    stock_data = stock_data.rename(columns={
+        '1. open': 'open',
+        '2. high': 'high',
+        '3. low': 'low',
+        '4. close': 'close',
+        '5. volume': 'volume'
+    })
+    stock_data = stock_data.astype(float)
     return meta_data, stock_data
 
 
@@ -117,8 +124,55 @@ print('The available time period options are daily, intraday, monthly or weekly.
 time_period = input().lower()
 new_file = create_file(time_period, ticker)
 
-if check_api_error_message():
-    meta_data_df, stock_data_df = create_dataframes(time_period, new_file)
-    print(stock_data_df)
-else:
-    print('nok')
+while True:
+    if check_api_error_message():
+        try:
+            meta_data_df, stock_data_df = create_dataframes(time_period, new_file)
+            if time_period == 'intraday':
+                print(f'You chose the ticker {meta_data_df['2. Symbol'].iloc[0]}.\n'
+                      f'The data was last updated on {meta_data_df['3. Last Refreshed'].iloc[0]} on the {meta_data_df['6. Time Zone'].iloc[0]} standard time.')
+            if time_period == 'weekly' or time_period == 'monthly':
+                print(f'You chose the ticker {meta_data_df['2. Symbol'].iloc[0]}.\n'
+                      f'The data was last updated on {meta_data_df['3. Last Refreshed'].iloc[0]} on the {meta_data_df['4. Time Zone'].iloc[0]} standard time.')
+            else:
+                print(f'You chose the ticker {meta_data_df['2. Symbol'].iloc[0]}.\n'
+                      f'The data was last updated on {meta_data_df['3. Last Refreshed'].iloc[0]} on the {meta_data_df['5. Time Zone'].iloc[0]} standard time.')
+
+            fig = make_subplots(rows=len(stock_data_df.columns), cols=1, shared_xaxes=True,
+                                subplot_titles=stock_data_df.columns, vertical_spacing=0.05)
+
+            for i, col in enumerate(stock_data_df.columns):
+                fig.add_trace(go.Scatter(x=stock_data_df.index, y=stock_data_df[col], mode='lines', name=col),
+                              row=i + 1, col=1)
+            # Update layout
+            fig.update_layout(
+                title=f'{time_period.title()} stock data from {ticker}.',
+                showlegend=True,
+                height=800,
+                width=1000, )
+            fig.show()
+
+            if input('would you like to see more indepth analysis? y/n') == 'y':
+                stock_data_df['returns'] = ((stock_data_df['close'] / stock_data_df['close'].shift(1)) - 1) * 100
+                fig = go.Figure()
+                fig.add_trace(go.Histogram(x=stock_data_df['returns'], name='Daily Returns'))
+
+                # Update layout
+                fig.update_layout(
+                    title=f'Histogram of {time_period} Returns (Percentage) of {ticker} Stock',
+                    xaxis_title='Daily Returns (%)',
+                    yaxis_title='Frequency'
+                )
+                # Show plot
+                fig.show()
+        except Exception as e:
+            print(f'An error occurred: {e}')
+        ticker = input('Give next ticker: ').upper()
+        if ticker == 'q' or ticker == 'Q':
+            break
+        time_period = input('Choose new time period:').lower()
+        new_file = create_file(time_period, ticker)
+    else:
+        ticker = input('New ticker: ').upper()
+        time_period = input('Choose new time period:').lower()
+        new_file = create_file(time_period, ticker)
