@@ -63,8 +63,8 @@ def check_api_error_message():
         with open(file_to_save, 'r') as f:
             try:
                 data = json.load(f)
-            except Exception as e:
-                print(f'An error occurred: {e}')
+            except Exception as exception:
+                print(f'An error occurred: {exception}')
         if 'Error Message' in data:
             print("Wrong stock market ticker. Choose a new one!")
             os.remove(file_to_save)  # Delete the file
@@ -96,8 +96,8 @@ def create_dataframes(period, file):
             stock_data = pd.DataFrame(data['Weekly Adjusted Time Series']).T
         else:
             valid_input = False
-    except Exception as e:
-        print(f'An error occurred: {e}')
+    except Exception as exception:
+        print(f'An error occurred: {exception}')
 
     stock_data = stock_data.rename(columns={
         '1. open': 'open',
@@ -107,7 +107,47 @@ def create_dataframes(period, file):
         '5. volume': 'volume'
     })
     stock_data = stock_data.astype(float)
+    stock_data = stock_data.sort_index(ascending=True)
     return meta_data, stock_data
+
+
+def calculate_volatility():
+    global fig
+    stock_data_df['returns'] = ((stock_data_df['close'] /
+                                 stock_data_df['close'].shift(1)) - 1) * 100
+    fig = go.Figure()
+    fig.add_trace(go.Histogram(x=stock_data_df['returns'], name='Daily Returns'))
+    fig.update_layout(title=f'Histogram of {time_period} Returns (Percentage) of {ticker} Stock',
+                      xaxis_title='Daily Returns (%)',
+                      yaxis_title='Frequency')
+    fig.show()
+
+
+def calculate_sma(window):
+    global fig
+    stock_data_df['sma'] = stock_data_df['close'].rolling(window).mean()
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=stock_data_df.index, y=stock_data_df['sma'], mode='lines', name='SMA50'))
+    fig.add_trace(go.Scatter(x=stock_data_df.index, y=stock_data_df['close'], mode='lines', name='close'))
+    fig.update_layout(title=f'Simple Moving Average over 50 datapoints of the {ticker} closing stock data',
+                      xaxis_title='date',
+                      yaxis_title='SMA')
+    fig.show()
+
+
+def calculate_rsi(window):
+    global fig
+    stock_data_df['change'] = stock_data_df['close'].diff()
+    stock_data_df['gain'] = stock_data_df['change'].apply(lambda x: x if x > 0 else 0)
+    stock_data_df['Loss'] = stock_data_df['Price Change'].apply(lambda x: abs(x) if x < 0 else 0)
+
+    stock_data_df['Avg Gain'] = stock_data_df['Gain'].rolling(window=window).mean()
+    stock_data_df['Avg Loss'] = stock_data_df['Loss'].rolling(window=window).mean()
+
+    stock_data_df['RSI'] = 100 - (100 / (1 + stock_data_df['Avg Gain'] / stock_data_df['Avg Loss']))
+
+    #print rsi and show on graph
+
 
 
 print("Welcome to StockAnalyzer v1.0! Analyze stock data effortlessly. \
@@ -125,13 +165,13 @@ time_period = input().lower()
 new_file = create_file(time_period, ticker)
 
 while True:
-    if check_api_error_message():
-        try:
+    try:
+        if check_api_error_message():
             meta_data_df, stock_data_df = create_dataframes(time_period, new_file)
             if time_period == 'intraday':
                 print(f'You chose the ticker {meta_data_df['2. Symbol'].iloc[0]}.\n'
                       f'The data was last updated on {meta_data_df['3. Last Refreshed'].iloc[0]} on the {meta_data_df['6. Time Zone'].iloc[0]} standard time.')
-            if time_period == 'weekly' or time_period == 'monthly':
+            elif time_period == 'weekly' or time_period == 'monthly':
                 print(f'You chose the ticker {meta_data_df['2. Symbol'].iloc[0]}.\n'
                       f'The data was last updated on {meta_data_df['3. Last Refreshed'].iloc[0]} on the {meta_data_df['4. Time Zone'].iloc[0]} standard time.')
             else:
@@ -152,27 +192,32 @@ while True:
                 width=1000, )
             fig.show()
 
-            if input('would you like to see more indepth analysis? y/n') == 'y':
-                stock_data_df['returns'] = ((stock_data_df['close'] / stock_data_df['close'].shift(1)) - 1) * 100
-                fig = go.Figure()
-                fig.add_trace(go.Histogram(x=stock_data_df['returns'], name='Daily Returns'))
+            more_analytic = input('would you like to see more indepth analysis? y/n')
+            print('what would you like to see?')
+            print('1. The volatility of the stock \n'
+                  '2. The Moving Averages for Stock Price (SMA)\n'
+                  '3. ')
 
-                # Update layout
-                fig.update_layout(
-                    title=f'Histogram of {time_period} Returns (Percentage) of {ticker} Stock',
-                    xaxis_title='Daily Returns (%)',
-                    yaxis_title='Frequency'
-                )
-                # Show plot
-                fig.show()
-        except Exception as e:
-            print(f'An error occurred: {e}')
-        ticker = input('Give next ticker: ').upper()
-        if ticker == 'q' or ticker == 'Q':
-            break
-        time_period = input('Choose new time period:').lower()
-        new_file = create_file(time_period, ticker)
-    else:
-        ticker = input('New ticker: ').upper()
-        time_period = input('Choose new time period:').lower()
-        new_file = create_file(time_period, ticker)
+            while more_analytic != 'n':
+                choice = int(input('Whats your choice?'))
+                if choice == 1:
+                    calculate_volatility()
+                elif choice == 2:
+                    number_datapoints = int(
+                        input('over how many datapoint would you like to calculate the moving average?'))
+                    calculate_sma(number_datapoints)
+                elif choice == 3:
+                    calculate_rsi(14)
+                more_analytic = input('More analysis? y/n:')
+
+            ticker = input('Give next ticker: ').upper()
+            if ticker == 'q' or ticker == 'Q':
+                break
+            time_period = input('Choose new time period:').lower()
+            new_file = create_file(time_period, ticker)
+        else:
+            ticker = input('New ticker: ').upper()
+            time_period = input('Choose new time period:').lower()
+            new_file = create_file(time_period, ticker)
+    except Exception as e:
+        print(f'An error occurred: {e}')
