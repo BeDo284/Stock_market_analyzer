@@ -27,3 +27,8 @@ put data into files because the standard API rate limit is set to 25 requests pe
 https://github.com/JNYH/Analysing_the_Stock_Market_with_Python/blob/main/Analysing%20the%20Stock%20Market%20p1.ipynb
 https://www.analyticsvidhya.com/blog/2021/07/stock-prices-analysis-with-python/
 https://www.datacamp.com/tutorial/lstm-python-stock-market
+https://plotly.com/python/candlestick-charts/
+
+https://www.youtube.com/watch?v=N9NqTp_D_bw&list=PLvX_z5LE2PSwGYCx6s6OW1QHdVo5wWcBD&index=2
+https://medium.com/@financial_python/building-a-macd-indicator-in-python-190b2a4c1777
+https://medium.com/@maneesh1.kumar/macd-analysis-made-easy-with-python-23fd55dab90b

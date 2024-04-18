@@ -1,9 +1,10 @@
 import json
 import os
 from datetime import datetime
+
 import pandas as pd
-import requests
 import plotly.graph_objects as go
+import requests
 from plotly.subplots import make_subplots
 
 api_key1 = 'W59OQACAUZ0HS2N3'
@@ -139,15 +140,67 @@ def calculate_rsi(window):
     global fig
     stock_data_df['change'] = stock_data_df['close'].diff()
     stock_data_df['gain'] = stock_data_df['change'].apply(lambda x: x if x > 0 else 0)
-    stock_data_df['Loss'] = stock_data_df['Price Change'].apply(lambda x: abs(x) if x < 0 else 0)
-
-    stock_data_df['Avg Gain'] = stock_data_df['Gain'].rolling(window=window).mean()
-    stock_data_df['Avg Loss'] = stock_data_df['Loss'].rolling(window=window).mean()
-
+    stock_data_df['loss'] = stock_data_df['change'].apply(lambda x: abs(x) if x < 0 else 0)
+    stock_data_df['Avg Gain'] = stock_data_df['gain'].rolling(window=window).mean()
+    stock_data_df['Avg Loss'] = stock_data_df['loss'].rolling(window=window).mean()
     stock_data_df['RSI'] = 100 - (100 / (1 + stock_data_df['Avg Gain'] / stock_data_df['Avg Loss']))
 
-    #print rsi and show on graph
+    fig = make_subplots(rows=2, cols=1, subplot_titles=("RSI", "Close"))
+    fig.add_trace(go.Scatter(x=stock_data_df.index, y=stock_data_df['RSI'], mode='lines', name='RSI'), row=1, col=1)
+    fig.add_shape(type="line",
+                  x0=stock_data_df.index[0], y0=30, x1=stock_data_df.index[-1], y1=30,
+                  line=dict(color="green", width=1.5, dash="dash"),
+                  row=1, col=1)
+    fig.add_shape(type="line",
+                  x0=stock_data_df.index[0], y0=70, x1=stock_data_df.index[-1], y1=70,
+                  line=dict(color="red", width=1.5, dash="dash"),
+                  row=1, col=1)
+    fig.add_trace(go.Scatter(x=stock_data_df.index, y=stock_data_df['close'], mode='lines', name='Close'), row=2,
+                  col=1)
+    fig.update_layout(title_text="RSI and Close Data",
+                      showlegend=True,
+                      xaxis=dict(title='Date'))
+    fig.show()
 
+
+def calculate_macd():
+    global fig
+    ema_12 = stock_data_df['close'].ewm(span=12, min_periods=0, adjust=False).mean()
+    ema_26 = stock_data_df['close'].ewm(span=26, min_periods=0, adjust=False).mean()
+    macd_line = ema_12 - ema_26
+    signal_line = macd_line.ewm(span=9, min_periods=0, adjust=False).mean()
+    macd_histogram = macd_line - signal_line
+
+    stock_data_df['MACD'] = macd_line
+    stock_data_df['Signal'] = signal_line
+    stock_data_df['Histogram'] = macd_histogram
+
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.3)
+    fig.add_trace(go.Scatter(x=stock_data_df.index, y=stock_data_df['close'], mode='lines', name='Close Prices'), row=1,
+                  col=1)
+    fig.add_trace(go.Scatter(x=stock_data_df.index, y=macd_line, mode='lines', name='MACD',
+                             line=dict(color='purple')), row=2, col=1)
+    fig.add_trace(go.Scatter(x=stock_data_df.index, y=signal_line, mode='lines', name='Signal Line',
+                             line=dict(color='orange', dash='dot')), row=2, col=1)
+    # Add the histogram with colors assigned to each bar individually
+    colors = ['rgb(0,255,0)' if val >= 0 else 'rgb(255,0,0)' for val in stock_data_df['Histogram']]
+    fig.add_trace(
+        go.Bar(x=stock_data_df.index, y=stock_data_df['Histogram'], name='Histogram', marker=dict(color=colors)), row=2,
+        col=1)
+
+    # Customize the chart
+    fig.update_xaxes(rangeslider=dict(visible=True))
+    fig.update_layout(plot_bgcolor='#efefff', font_family='Monospace', font_color='#000000', font_size=20, width=1500,
+                      height=1000)
+    fig.update_layout(
+        title=f"MACD chart for {ticker}"
+    )
+    # Show the chart
+    fig.show()
+
+
+def engulfing():
+    global fig
 
 
 print("Welcome to StockAnalyzer v1.0! Analyze stock data effortlessly. \
@@ -196,7 +249,7 @@ while True:
             print('what would you like to see?')
             print('1. The volatility of the stock \n'
                   '2. The Moving Averages for Stock Price (SMA)\n'
-                  '3. ')
+                  '3. The Relative Strength Index (RSI)')
 
             while more_analytic != 'n':
                 choice = int(input('Whats your choice?'))
@@ -204,10 +257,12 @@ while True:
                     calculate_volatility()
                 elif choice == 2:
                     number_datapoints = int(
-                        input('over how many datapoint would you like to calculate the moving average?'))
+                        input('Over how many datapoint would you like to calculate the moving average?'))
                     calculate_sma(number_datapoints)
                 elif choice == 3:
                     calculate_rsi(14)
+                elif choice == 4:
+                    calculate_macd()
                 more_analytic = input('More analysis? y/n:')
 
             ticker = input('Give next ticker: ').upper()
