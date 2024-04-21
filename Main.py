@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -15,6 +15,8 @@ link_to_tickers = 'https://stockanalysis.com/stocks/'
 response = None
 valid_input = True
 file_to_save = ''
+start_date = None
+end_date = None
 
 
 def create_file(period, tick):
@@ -82,6 +84,8 @@ def create_dataframes(period, file):
     meta_data = None
     stock_data = None
     global valid_input
+    global start_date
+    global end_date
 
     try:
         with open(file) as f:
@@ -89,12 +93,21 @@ def create_dataframes(period, file):
         meta_data = pd.DataFrame(data['Meta Data'], index=['Meta Data'])
         if period == 'daily':
             stock_data = pd.DataFrame(data['Time Series (Daily)']).T
+            stock_data.index = pd.to_datetime(stock_data.index)
+            mask = (stock_data.index >= start_date) & (stock_data.index <= end_date)
+            stock_data = stock_data[mask]
         elif period == 'intraday':
             stock_data = pd.DataFrame(data['Time Series (5min)']).T
         elif period == 'monthly':
             stock_data = pd.DataFrame(data['Monthly Time Series']).T
+            stock_data.index = pd.to_datetime(stock_data.index)
+            mask = (stock_data.index >= start_date) & (stock_data.index <= end_date)
+            stock_data = stock_data[mask]
         elif period == 'weekly':
             stock_data = pd.DataFrame(data['Weekly Adjusted Time Series']).T
+            stock_data.index = pd.to_datetime(stock_data.index)
+            mask = (stock_data.index >= start_date) & (stock_data.index <= end_date)
+            stock_data = stock_data[mask]
         else:
             valid_input = False
     except Exception as exception:
@@ -202,6 +215,90 @@ def calculate_macd():
 def engulfing():
     global fig
 
+    def is_engulfing(candle1, candle2):
+        """
+        Check if candle2 engulfs candle1
+        """
+        if candle2['open'] < candle1['close'] and candle2['close'] > candle1['open']:
+            return True
+        return False
+
+    engulfing_patterns = []
+
+    for s in range(1, len(stock_data_df)):
+        prev_index = stock_data_df.index[s - 1]
+        curr_index = stock_data_df.index[s]
+        prev_candle = stock_data_df.loc[prev_index]
+        curr_candle = stock_data_df.loc[curr_index]
+        if is_engulfing(prev_candle, curr_candle):
+            engulfing_patterns.append((prev_index, curr_index))
+
+    print("Engulfing Patterns:")
+    for pattern in engulfing_patterns:
+        print("Engulfing pattern on {} at {}".format(pattern[0], pattern[1]))
+    # Plotting using Plotly
+    fig = go.Figure()
+
+    # Add candlestick trace
+    fig.add_trace(go.Candlestick(x=stock_data_df.index,
+                                 open=stock_data_df['open'],
+                                 high=stock_data_df['high'],
+                                 low=stock_data_df['low'],
+                                 close=stock_data_df['close'],
+                                 name='Candlestick'))
+    # Add engulfing pattern areas
+    for pattern in engulfing_patterns:
+        fig.add_shape(type="rect",
+                      x0=pattern[0], y0=min(stock_data_df['low']), x1=pattern[1], y1=max(stock_data_df['high']),
+                      line=dict(color="Red", width=2),
+                      fillcolor="Red", opacity=0.3,
+                      layer="below")
+
+    fig.update_layout(title='Stock Price with Engulfing Patterns',
+                      xaxis_title='Date',
+                      yaxis_title='Price')
+
+    fig.show()
+
+
+def get_valid_dates():
+    global start_date
+    global end_date
+
+    valid_date = False
+
+    while not valid_date:
+        start_date_str = input('chose a start date(yyyy-mm-dd): ')
+        end_date_str = input('chose a end date(yyyy-mm-dd): ')
+        if start_date_str == "s":
+            start_date = datetime.now() - timedelta(days=365)
+        else:
+            try:
+                start_date = pd.to_datetime(start_date_str)
+            except ValueError:
+                print("Invalid date format. Please enter dates in YYYY-MM-DD format or 's' for 100 days ago.")
+                continue
+
+        if end_date_str == "t":
+            end_date = datetime.now()
+        else:
+            try:
+                end_date = pd.to_datetime(end_date_str)
+            except ValueError:
+                print("Invalid date format. Please enter dates in YYYY-MM-DD format or 't' for today.")
+                continue
+
+            # Convert start_date_str and end_date_str to datetime objects
+        if start_date == "s" or end_date == "t":
+            valid_date = True
+        else:
+            if start_date >= end_date:
+                print("Start date must be before end date.")
+            else:
+                valid_date = True
+
+    return start_date, end_date
+
 
 print("Welcome to StockAnalyzer v1.0! Analyze stock data effortlessly. \
 Choose a company and time period to get started.")
@@ -213,12 +310,13 @@ ticker = input('Choose a ticker (company):').upper()
 
 interval = '5'
 print('The available time period options are daily, intraday, monthly or weekly.')
-
 time_period = input().lower()
+
 new_file = create_file(time_period, ticker)
 
 while True:
     try:
+        get_valid_dates()
         if check_api_error_message():
             meta_data_df, stock_data_df = create_dataframes(time_period, new_file)
             if time_period == 'intraday':
@@ -232,24 +330,30 @@ while True:
                       f'The data was last updated on {meta_data_df['3. Last Refreshed'].iloc[0]} on the {meta_data_df['5. Time Zone'].iloc[0]} standard time.')
 
             fig = make_subplots(rows=len(stock_data_df.columns), cols=1, shared_xaxes=True,
-                                subplot_titles=stock_data_df.columns, vertical_spacing=0.05)
+                                subplot_titles=stock_data_df.columns,
+                                vertical_spacing=0.05)
 
             for i, col in enumerate(stock_data_df.columns):
                 fig.add_trace(go.Scatter(x=stock_data_df.index, y=stock_data_df[col], mode='lines', name=col),
                               row=i + 1, col=1)
+
+            fig.update_xaxes(rangeslider=dict(visible=False))
             # Update layout
             fig.update_layout(
                 title=f'{time_period.title()} stock data from {ticker}.',
                 showlegend=True,
                 height=800,
-                width=1000, )
+                width=1000,
+            )
             fig.show()
 
             more_analytic = input('would you like to see more indepth analysis? y/n')
             print('what would you like to see?')
             print('1. The volatility of the stock \n'
                   '2. The Moving Averages for Stock Price (SMA)\n'
-                  '3. The Relative Strength Index (RSI)')
+                  '3. The Relative Strength Index (RSI)\n'
+                  '4. The Moving Average Convergence Divergence (MACD) \n'
+                  '5. Engulfing pattern')
 
             while more_analytic != 'n':
                 choice = int(input('Whats your choice?'))
@@ -263,7 +367,12 @@ while True:
                     calculate_rsi(14)
                 elif choice == 4:
                     calculate_macd()
-                more_analytic = input('More analysis? y/n:')
+                elif choice == 5:
+                    engulfing()
+                else:
+                    print(f'{choice} is not a function.')
+
+                more_analytic = input('Another analysis? y/n:')
 
             ticker = input('Give next ticker: ').upper()
             if ticker == 'q' or ticker == 'Q':
